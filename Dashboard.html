@@ -1,0 +1,32 @@
+<div class="page-head"><h4>Dashboard</h4></div>
+<div class="card mb-3"><div class="card-body"><div class="row g-2 align-items-end">
+  <div class="col-md-3"><label>ช่วงเวลา</label><select id="dashType" class="form-select" onchange="toggleCustomDate('dash')"><option value="today">วันนี้</option><option value="week">สัปดาห์นี้</option><option value="month" selected>เดือนนี้</option><option value="year">ปีนี้</option><option value="custom">กำหนดเอง</option></select></div>
+  <div class="col-md-3"><label>ประเภทวัสดุ</label><select id="dashCategory" class="form-select"><option value="">ทุกประเภท</option></select></div>
+  <div class="col-md-3 custom-dash d-none"><label>วันที่เริ่ม</label><input id="dashStart" type="date" class="form-control"></div>
+  <div class="col-md-3 custom-dash d-none"><label>วันที่สิ้นสุด</label><input id="dashEnd" type="date" class="form-control"></div>
+  <div class="col-md-3"><button class="btn btn-primary" onclick="loadDashboard()"><i class="bi bi-search"></i> แสดงผล</button></div>
+</div></div></div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4 col-xl"><div class="stat"><span>รายการวัสดุทั้งหมด</span><b id="statItems">0</b></div></div>
+  <div class="col-md-4 col-xl"><div class="stat"><span>มูลค่าคงเหลือ (บาท)</span><b id="statValue">0</b></div></div>
+  <div class="col-md-4 col-xl admin-only"><div class="stat"><span>รับเข้า</span><b id="statIn">0</b></div></div>
+  <div class="col-md-4 col-xl"><div class="stat"><span>เบิกวัสดุแล้ว</span><b id="statOut">0</b></div></div>
+  <div class="col-md-4 col-xl"><div class="stat"><span>ยอดเงินเบิก (บาท)</span><b id="statOutAmount">0</b></div></div>
+</div>
+<div class="row g-3 mb-3 user-only">
+  <div class="col-md-4"><div class="stat"><span>รออนุมัติของฉัน</span><b id="statMyPending">0</b></div></div>
+  <div class="col-md-4"><div class="stat"><span>อนุมัติแล้ว</span><b id="statMyApproved">0</b></div></div>
+  <div class="col-md-4"><div class="stat"><span>ไม่อนุมัติ</span><b id="statMyRejected">0</b></div></div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header">ภาพรวมการเบิก</div><div class="card-body chart-wrap"><canvas id="dashSummaryChart"></canvas></div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header">มูลค่า (บาท)</div><div class="card-body chart-wrap"><canvas id="dashMoneyChart"></canvas></div></div></div>
+  <div class="col-lg-4"><div class="card h-100"><div class="card-header">เบิกแยกตามประเภทวัสดุ</div><div class="card-body chart-wrap"><canvas id="dashCategoryChart"></canvas></div></div></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header">วัสดุใกล้หมด</div><div class="card-body table-responsive"><table class="table table-sm"><thead><tr><th>ลำดับ</th><th>วัสดุ</th><th>คงเหลือ</th><th>ขั้นต่ำ</th></tr></thead><tbody id="lowStockBody"></tbody></table></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header">วัสดุที่ถูกเบิกมากที่สุด 10 อันดับ</div><div class="card-body table-responsive"><table class="table table-sm"><thead><tr><th>ลำดับ</th><th>วัสดุ</th><th>จำนวน</th><th>มูลค่า</th></tr></thead><tbody id="topIssuedBody"></tbody></table></div></div></div>
+  <div class="col-lg-6 admin-only"><div class="card h-100"><div class="card-header">รับเข้าล่าสุด</div><div class="card-body table-responsive"><table class="table table-sm"><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เลขที่</th><th>วัสดุ</th><th>จำนวน</th></tr></thead><tbody id="latestInBody"></tbody></table></div></div></div>
+  <div class="col-lg-6"><div class="card h-100"><div class="card-header">เบิกพัสดุล่าสุด</div><div class="card-body table-responsive"><table class="table table-sm"><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เลขที่</th><th>วัสดุ</th><th>จำนวน</th></tr></thead><tbody id="latestOutBody"></tbody></table></div></div></div>
+  <div class="col-12 admin-only"><div class="card"><div class="card-header">สรุปเบิกพัสดุแยกตามประเภทวัสดุ</div><div class="card-body table-responsive"><table class="table"><thead><tr><th>ลำดับ</th><th>ประเภท</th><th>จำนวนเบิก</th><th>มูลค่า</th></tr></thead><tbody id="byCategoryBody"></tbody></table></div></div></div>
+</div>

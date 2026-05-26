@@ -1,0 +1,10 @@
+<div class="page-head"><h4>จัดการประเภทวัสดุ</h4><button class="btn btn-primary" onclick="openCategoryForm()"><i class="bi bi-plus"></i> เพิ่มประเภท</button></div>
+<div class="card"><div class="card-body">
+  <input id="catSearch" class="form-control mb-3" placeholder="ค้นหาประเภทวัสดุ" oninput="renderCategories()">
+  <div class="table-responsive"><table class="table table-hover"><thead><tr><th>ลำดับ</th><th>ชื่อประเภท</th><th>รายละเอียด</th><th>สถานะ</th><th class="text-end">จัดการ</th></tr></thead><tbody id="categoriesBody"></tbody></table></div><div id="categoriesPager" class="pager-wrap"></div>
+</div></div>
+<div class="modal fade" id="categoryModal"><div class="modal-dialog"><form class="modal-content" id="categoryForm">
+  <div class="modal-header"><h5 class="modal-title">ประเภทวัสดุ</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><input type="hidden" id="catId"><div class="mb-3"><label>ชื่อประเภท</label><input id="catName" class="form-control" required></div><div class="mb-3"><label>รายละเอียด</label><textarea id="catDesc" class="form-control"></textarea></div><div><label>สถานะ</label><select id="catStatus" class="form-select"><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></div></div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button class="btn btn-primary" data-loading-text="กำลังบันทึก...">บันทึก</button></div>
+</form></div></div>

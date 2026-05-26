@@ -1,0 +1,19 @@
+<div class="page-head"><h4>จัดการผู้ใช้</h4><button class="btn btn-primary admin-only" onclick="openUserForm()"><i class="bi bi-plus"></i> เพิ่มผู้ใช้</button></div>
+<div class="card"><div class="card-body">
+  <div class="row g-2 mb-3"><div class="col-md-5"><input id="userSearch" class="form-control" placeholder="ค้นหา username / ชื่อ / กลุ่มงาน / เบอร์โทร" oninput="renderUsers()"></div><div class="col-md-4"><select id="userStatusFilter" class="form-select" onchange="renderUsers()"><option value="">ทุกสถานะ</option><option value="pending">รอการอนุมัติ</option><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option><option value="rejected">ไม่อนุมัติ</option></select></div><div class="col-md-3"><button class="btn btn-outline-secondary w-100" onclick="refreshUsers()"><i class="bi bi-arrow-clockwise"></i> รีเฟรช</button></div></div>
+  <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th>ลำดับ</th><th>Username</th><th>ชื่อ-สกุล</th><th>เบอร์โทร</th><th>บทบาท</th><th>กลุ่มงาน</th><th>สถานะ</th><th class="text-end">จัดการ</th></tr></thead><tbody id="usersBody"></tbody></table></div><div id="usersPager" class="pager-wrap"></div>
+</div></div>
+<div class="modal fade" id="userModal"><div class="modal-dialog"><form class="modal-content" id="userForm">
+  <div class="modal-header"><h5 class="modal-title">ข้อมูลผู้ใช้</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><input type="hidden" id="userId"><div class="row g-3">
+    <div class="col-md-6"><label>Username</label><input id="userUsername" class="form-control" required></div>
+    <div class="col-md-6"><label>Password <small class="text-muted">เว้นว่างถ้าไม่เปลี่ยน</small></label><input id="userPassword" type="password" class="form-control"></div>
+    <div class="col-md-12"><label>ชื่อ-สกุล</label><input id="userFull" class="form-control" required></div>
+    <div class="col-md-6"><label>เบอร์โทร</label><input id="userPhone" class="form-control"></div>
+    <div class="col-md-6"><label>บทบาท</label><select id="userRoleSelect" class="form-select"><option value="User">User</option><option value="Admin">Admin</option></select></div>
+    <div class="col-md-6"><label>สถานะ</label><select id="userStatus" class="form-select"><option value="pending">รอการอนุมัติ</option><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option><option value="rejected">ไม่อนุมัติ</option></select></div>
+    <div class="col-md-6"><label>กลุ่มงาน</label><select id="userDepartment" class="form-select"></select></div>
+    <div class="col-12"><label>หมายเหตุการอนุมัติ</label><input id="userApprovalNote" class="form-control"></div>
+  </div></div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button class="btn btn-primary" data-loading-text="กำลังบันทึก...">บันทึก</button></div>
+</form></div></div>

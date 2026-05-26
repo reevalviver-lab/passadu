@@ -1,0 +1,15 @@
+<div class="page-head">
+  <h4>จัดการกลุ่มงาน</h4>
+  <button class="btn btn-primary" onclick="openDepartmentForm()"><i class="bi bi-plus-circle"></i> เพิ่มกลุ่มงาน</button>
+</div>
+<div class="card mb-3"><div class="card-body"><input id="depSearch" class="form-control" placeholder="ค้นหากลุ่มงาน" oninput="renderDepartments()"></div></div>
+<div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>ลำดับ</th><th>ชื่อกลุ่มงาน</th><th>สถานะ</th><th class="text-end">จัดการ</th></tr></thead><tbody id="departmentsBody"></tbody></table></div><div id="departmentsPager" class="pager-wrap p-3 pt-0"></div></div>
+<div class="modal fade" id="departmentModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" id="departmentForm">
+  <div class="modal-header"><h5 class="modal-title">ข้อมูลกลุ่มงาน</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body row g-3">
+    <input type="hidden" id="depId">
+    <div class="col-12"><label>ชื่อกลุ่มงาน</label><input id="depName" class="form-control" required></div>
+    <div class="col-12"><label>สถานะ</label><select id="depStatus" class="form-select"><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button class="btn btn-primary" data-loading-text="กำลังบันทึก...">บันทึก</button></div>
+</form></div></div>

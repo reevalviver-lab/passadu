@@ -1,0 +1,370 @@
+<script>
+let TOKEN = localStorage.getItem('stock_token') || '';
+let EXPIRES_AT = Number(localStorage.getItem('stock_expires_at') || 0);
+let SESSION_TIMER = null;
+let APP = {user:null, categories:[], items:[], departments:[], users:[], reportRows:[], requests:[], settings:{app_name:'ระบบบริหารงานพัสดุ', organization_name:'ชื่อหน่วยงาน'}};
+const PAGE_SIZE = 10;
+const PAGE_STATE = {};
+let DASH_CHARTS = {};
+const fmt = n => Number(n||0).toLocaleString('th-TH', {maximumFractionDigits:2});
+const fmtQty = n => Number(n||0).toLocaleString('th-TH', {maximumFractionDigits:0});
+const intVal = v => Math.max(0, Math.floor(Number(v||0)));
+const today = () => new Date().toISOString().slice(0,10);
+function forceInteger(el){ if(!el) return; el.value = String(el.value||'').replace(/[^0-9]/g,''); }
+function bindIntegerInputs(){ document.querySelectorAll('input[inputmode="numeric"], input[data-int="true"]').forEach(el=>['input','change','blur'].forEach(ev=>el.addEventListener(ev, ()=>forceInteger(el)))); }
+function server(fn, ...args){ return new Promise((resolve,reject)=>{ google.script.run.withSuccessHandler(resolve).withFailureHandler(e=>reject(e))[fn](...args); }); }
+function toast(msg){ const el=document.querySelector('#toast .toast-body'); if(!el) return; el.textContent=msg; new bootstrap.Toast(document.getElementById('toast')).show(); }
+function setLoading(btn, on){ if(!btn) return; btn.disabled=on; btn.dataset.old=btn.dataset.old||btn.innerHTML; btn.innerHTML=on?(btn.dataset.loadingText||'กำลังบันทึก...'):btn.dataset.old; }
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('show');}
+function esc(s){return String(s??'').replace(/[&<>'"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));}
+function rows(arr, cb){ return arr && arr.length ? arr.map(cb).join('') : '<tr><td colspan="99" class="text-center text-muted">ไม่พบข้อมูล</td></tr>'; }
+function resetPage(key){ PAGE_STATE[key]=1; }
+function getPage(key){ return Math.max(1, Number(PAGE_STATE[key] || 1)); }
+function setPage(key,page,renderFn){ PAGE_STATE[key]=page; renderFn(); }
+function renderPagination(containerId, key, total, renderFn){
+  const el=document.getElementById(containerId); if(!el) return;
+  const pages=Math.ceil((total||0)/PAGE_SIZE);
+  if(pages<=1){ el.innerHTML=''; return; }
+  const current=Math.min(getPage(key), pages); PAGE_STATE[key]=current;
+  let html='<nav><ul class="pagination pagination-sm mb-0">';
+  html += `<li class="page-item ${current===1?'disabled':''}"><a class="page-link" href="#" onclick="setPage(\'${key}\',${current-1},${renderFn.name});return false;">ก่อนหน้า</a></li>`;
+  for(let i=1;i<=pages;i++){ html += `<li class="page-item ${i===current?'active':''}"><a class="page-link" href="#" onclick="setPage(\'${key}\',${i},${renderFn.name});return false;">${i}</a></li>`; }
+  html += `<li class="page-item ${current===pages?'disabled':''}"><a class="page-link" href="#" onclick="setPage(\'${key}\',${current+1},${renderFn.name});return false;">ถัดไป</a></li>`;
+  html+='</ul></nav>'; el.innerHTML=html;
+}
+function pageSlice(key, arr){ const page=getPage(key); const start=(page-1)*PAGE_SIZE; return {slice:(arr||[]).slice(start,start+PAGE_SIZE), start}; }
+function setTableLoading(tbodyId){ const el=document.getElementById(tbodyId); if(!el) return; const loading='<span class="spinner-border spinner-border-sm me-2"></span>กำลังโหลดข้อมูล...'; if(el.tagName==='TBODY') el.innerHTML=`<tr><td colspan="99" class="table-loading">${loading}</td></tr>`; else el.innerHTML=`<div class="table-loading">${loading}</div>`; }
+function badge(s){ if(s==='active') return '<span class="badge text-bg-success">ใช้งาน</span>'; if(s==='pending') return '<span class="badge text-bg-warning">รออนุมัติ</span>'; if(s==='approved') return '<span class="badge text-bg-success">อนุมัติแล้ว</span>'; if(s==='rejected') return '<span class="badge text-bg-danger">ไม่อนุมัติ</span>'; return '<span class="badge text-bg-secondary">ปิดใช้งาน</span>'; }
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  document.getElementById('loginForm').addEventListener('submit', loginSubmit);
+  if(typeof registerForm!=='undefined') registerForm.addEventListener('submit', registerSubmit);
+  if(typeof settingsForm!=='undefined') settingsForm.addEventListener('submit', saveSettingsSubmit);
+  document.querySelectorAll('.menu a').forEach(a=>a.onclick=()=>showPage(a.dataset.page));
+  bindForms(); bindIntegerInputs();
+  ['inDate','outDate','dashStart','dashEnd','reportStart','reportEnd'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=today();});
+  if(TOKEN){ bootView.classList.remove('d-none'); loginView.classList.add('d-none'); bootstrapApp(false); }
+});
+
+async function loginSubmit(e){
+  e.preventDefault();
+  const btn=e.submitter; setLoading(btn,true);
+  try{
+    const res = await server('login', loginUsername.value, loginPassword.value);
+    if(!res.success){toast(res.message);return;}
+    TOKEN=res.token; EXPIRES_AT=Number(res.expiresAt||0);
+    localStorage.setItem('stock_token', TOKEN); localStorage.setItem('stock_expires_at', String(EXPIRES_AT));
+    APP.user=res.user; APP.settings=APP.settings||{app_name:'ระบบบริหารงานพัสดุ', organization_name:'ชื่อหน่วยงาน'}; enterAppShell(); toast('เข้าสู่ระบบสำเร็จ'); hydrateInitialData();
+  }catch(err){toast(err.message || 'เข้าสู่ระบบไม่สำเร็จ');} finally{setLoading(btn,false);}
+}
+async function openRegisterModal(){ registerForm.reset(); try{ APP.departments = await server('listPublicDepartments'); fillSelects(); }catch(e){} new bootstrap.Modal(registerModal).show(); }
+async function registerSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ const data={username:regUsername.value,password:regPassword.value,fullname:regFullname.value,phone:regPhone.value,department:regDepartment.value}; const res=await server('registerUser', data); toast(res.message); if(res.success) bootstrap.Modal.getInstance(registerModal).hide(); }catch(err){toast(err.message||'ลงทะเบียนไม่สำเร็จ');} finally{setLoading(btn,false);} }
+async function bootstrapApp(showToast=false){
+  try{
+    const data = await server('getInitialData', TOKEN);
+    EXPIRES_AT = Number(data.expiresAt || EXPIRES_AT); localStorage.setItem('stock_expires_at', String(EXPIRES_AT));
+    APP = {...APP, ...data};
+    enterAppShell();
+    fillSelects(); renderItems(); refreshNotifications();
+    if(showToast) toast('โหลดข้อมูลเรียบร้อย');
+  }catch(err){ bootView.classList.add('d-none'); showLoginView(); }
+}
+function enterAppShell(){
+  bootView.classList.add('d-none'); loginView.classList.add('d-none'); appView.classList.remove('d-none');
+  updateUserUI(); startSessionTimer(); applySettings();
+  showPage('dashboard');
+}
+async function hydrateInitialData(){
+  try{
+    const data = await server('getInitialData', TOKEN);
+    EXPIRES_AT = Number(data.expiresAt || EXPIRES_AT); localStorage.setItem('stock_expires_at', String(EXPIRES_AT));
+    APP = {...APP, ...data};
+    updateUserUI(); applySettings(); fillSelects(); renderItems(); refreshNotifications();
+  }catch(err){ console.warn(err); }
+}
+function updateUserUI(){
+  userFullname.textContent = APP.user?.fullname || '';
+  userRole.textContent = (APP.user?.role || '') + ' | ' + (APP.user?.department||'');
+  document.querySelectorAll('[data-admin="true"], .admin-only').forEach(el=>el.classList.toggle('d-none', APP.user?.role!=='Admin'));
+  document.querySelectorAll('.user-only').forEach(el=>el.classList.toggle('d-none', APP.user?.role==='Admin'));
+  applyReportPermission();
+  applyNotificationBadges();
+  applySettings();
+}
+function applySettings(){
+  const appName = APP.settings?.app_name || 'ระบบบริหารงานพัสดุ';
+  const org = APP.settings?.organization_name || 'ชื่อหน่วยงาน';
+  ['brandText','appTitle'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=appName; });
+  const orgEl=document.getElementById('orgName'); if(orgEl) orgEl.textContent=org;
+  if(typeof settingOrgName!=='undefined') settingOrgName.value=org;
+}
+async function loadSettings(){ try{ APP.settings = await server('getAppSettings', TOKEN); applySettings(); }catch(e){} }
+
+function applyNotificationBadges(){
+  const counts = APP.notifications || {};
+  const setBadge=(id,count)=>{ const el=document.getElementById(id); if(!el) return; const c=Number(count||0); el.textContent=c; el.classList.toggle('d-none', c<=0); };
+  setBadge('pendingBadge', counts.pendingUsers || 0);
+  setBadge('approvalBadge', counts.pendingApprovals || APP.pendingCount || 0);
+  const seenKey = 'stock_tracking_seen_' + (APP.user?.user_id || APP.user?.username || 'user');
+  const seen = Number(localStorage.getItem(seenKey) || 0);
+  setBadge('trackingBadge', Math.max(0, Number(counts.myUpdatedRequests || 0) - seen));
+}
+async function refreshNotifications(){
+  if(!TOKEN) return;
+  try{
+    APP.notifications = await server('getNotificationCounts', TOKEN);
+    APP.pendingCount = Number(APP.notifications?.pendingApprovals || 0);
+    applyNotificationBadges();
+  }catch(err){ console.warn('refreshNotifications failed', err); }
+}
+function markTrackingSeen(){
+  const total = Number(APP.notifications?.myUpdatedRequests || 0);
+  const seenKey = 'stock_tracking_seen_' + (APP.user?.user_id || APP.user?.username || 'user');
+  localStorage.setItem(seenKey, String(total));
+  applyNotificationBadges();
+}
+
+async function saveSettingsSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ const res=await server('saveAppSettings', TOKEN, {organization_name:settingOrgName.value}); toast(res.message); if(res.success){ APP.settings=res.settings; applySettings(); } }catch(err){toast(err.message||'บันทึกตั้งค่าไม่สำเร็จ')} finally{setLoading(btn,false);} }
+function applyReportPermission(){
+  const rt=document.getElementById('reportType');
+  if(!rt) return;
+  [...rt.options].forEach(o=>{ o.hidden = APP.user?.role!=='Admin' && o.value!=='balance'; o.disabled = APP.user?.role!=='Admin' && o.value!=='balance'; });
+  if(APP.user?.role!=='Admin') rt.value='balance';
+}
+function startSessionTimer(){
+  if(SESSION_TIMER) clearInterval(SESSION_TIMER);
+  const tick=()=>{
+    const left = Math.max(0, EXPIRES_AT - Date.now());
+    const h=Math.floor(left/3600000), m=Math.floor((left%3600000)/60000);
+    const text = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    if(sessionTimer) sessionTimer.textContent=text; if(topSessionTimer) topSessionTimer.textContent=text;
+    if(left<=0){ clearInterval(SESSION_TIMER); toast('Session หมดอายุ กรุณาเข้าสู่ระบบใหม่'); showLoginView(); }
+  };
+  tick(); SESSION_TIMER=setInterval(tick, 30000);
+}
+async function refreshData(){ const data = await server('getInitialData', TOKEN); APP={...APP,...data}; applySettings(); EXPIRES_AT=Number(data.expiresAt||EXPIRES_AT); fillSelects(); updateUserUI(); renderCategories(); renderItems(); if(APP.user?.role==='Admin'){ renderUsers(); renderDepartments(); } checkLowStock(); refreshNotifications(); }
+async function reloadItems(){ setTableLoading('itemsBody'); APP.items = await server('listItems', TOKEN); APP.items = Array.isArray(APP.items)?APP.items:[]; fillSelects(); renderItems(); checkLowStock(); }
+async function loadCategories(){ try{ APP.categories = await server('listCategories', TOKEN); APP.categories = Array.isArray(APP.categories) ? APP.categories : []; fillSelects(); renderCategories(); }catch(err){ console.error(err); const body=document.getElementById('categoriesBody'); if(body) body.innerHTML='<tr><td colspan="99" class="text-center text-danger">โหลดประเภทวัสดุไม่สำเร็จ</td></tr>'; toast(err.message || 'โหลดประเภทวัสดุไม่สำเร็จ'); } }
+async function refreshDepartments(){ if(APP.user?.role!=='Admin') return; APP.departments = await server('listDepartments', TOKEN); fillSelects(); renderDepartments(); }
+async function refreshCurrentPage(){
+  const btn=document.getElementById('refreshBtn'); setLoading(btn,true);
+  try{
+    const active=document.querySelector('.menu a.active')?.dataset.page || 'dashboard';
+    if(active==='dashboard') await loadDashboard();
+    else if(active==='categories' && APP.user?.role==='Admin') await loadCategories();
+    else if(active==='reports') await loadReport();
+    else if(active==='items') await reloadItems();
+    else if(active==='tracking') await loadTracking();
+    else if(active==='approvals') await loadApprovals();
+    else if(active==='users' && APP.user?.role==='Admin') await refreshUsers();
+    else if(active==='departments' && APP.user?.role==='Admin') await refreshDepartments();
+    else if(active==='settings' && APP.user?.role==='Admin') await loadSettings();
+  }catch(err){ toast(err.message || 'รีเฟรชไม่สำเร็จ'); }
+  finally{ setLoading(btn,false); }
+}
+function showLoginView(){ TOKEN=''; EXPIRES_AT=0; localStorage.removeItem('stock_token'); localStorage.removeItem('stock_expires_at'); APP={user:null,categories:[],items:[],departments:[],users:[],reportRows:[],requests:[]}; if(SESSION_TIMER) clearInterval(SESSION_TIMER); bootView.classList.add('d-none'); appView.classList.add('d-none'); loginView.classList.remove('d-none'); loginPassword.value=''; document.querySelectorAll('main section').forEach(s=>s.classList.add('d-none')); document.getElementById('page-dashboard').classList.remove('d-none'); document.querySelectorAll('.menu a').forEach(a=>a.classList.toggle('active', a.dataset.page==='dashboard')); }
+async function logoutApp(){ try{ await server('logout', TOKEN); }catch(e){} showLoginView(); toast('ออกจากระบบแล้ว'); }
+function showPage(page){
+  const link=document.querySelector(`.menu a[data-page="${page}"]`);
+  if(link && link.classList.contains('d-none')) page = APP.user?.role==='Admin' ? 'dashboard' : 'items';
+  document.querySelectorAll('main section').forEach(s=>s.classList.add('d-none'));
+  const sec=document.getElementById('page-'+page); if(sec) sec.classList.remove('d-none');
+  document.querySelectorAll('.menu a').forEach(a=>a.classList.toggle('active', a.dataset.page===page));
+  if(window.innerWidth < 992) document.getElementById('sidebar')?.classList.remove('show');
+  setTimeout(()=>{
+    if(page==='reports'){ applyReportPermission(); setTableLoading('reportTableWrap'); loadReport(); }
+    if(page==='dashboard') loadDashboard();
+    if(page==='categories' && APP.user?.role==='Admin'){ setTableLoading('categoriesBody'); loadCategories(); }
+    if(page==='items'){ setTableLoading('itemsBody'); if(!Array.isArray(APP.items) || APP.items.length===0) reloadItems(); else renderItems(); }
+    if(page==='tracking'){ setTableLoading('trackingBody'); loadTracking(); markTrackingSeen(); }
+    if(page==='approvals'){ setTableLoading('approvalsBody'); loadApprovals(); }
+    if(page==='users' && APP.user?.role==='Admin'){ setTableLoading('usersBody'); refreshUsers(); }
+    if(page==='departments' && APP.user?.role==='Admin'){ setTableLoading('departmentsBody'); refreshDepartments(); }
+    if(page==='settings' && APP.user?.role==='Admin') loadSettings();
+  },0);
+}
+function fillSelects(){
+  APP.categories = Array.isArray(APP.categories) ? APP.categories : [];
+  APP.items = Array.isArray(APP.items) ? APP.items : [];
+  APP.departments = Array.isArray(APP.departments) ? APP.departments : [];
+  const activeCats = APP.categories.filter(c=>String(c.status||'active').toLowerCase()==='active');
+  const catOptions = '<option value="">-- ทุกประเภท/เลือกประเภท --</option>' + activeCats.map(c=>`<option value="${esc(c.category_id)}">${esc(c.category_name)}</option>`).join('');
+  ['itemCategory','itemCategoryFilter'].forEach(id=>{const el=document.getElementById(id); if(el){ const old=el.value; el.innerHTML=catOptions; el.value=old; }});
+  ['inCategory','outCategory'].forEach(id=>{const el=document.getElementById(id); if(el){ const old=el.value; el.innerHTML='<option value="">-- ทุกประเภท --</option>'+activeCats.map(c=>`<option value="${esc(c.category_id)}">${esc(c.category_name)}</option>`).join(''); el.value=old; }});
+  const dashCat=document.getElementById('dashCategory'); if(dashCat){ const old=dashCat.value; dashCat.innerHTML='<option value="">ทุกประเภท</option>'+activeCats.map(c=>`<option value="${esc(c.category_id)}">${esc(c.category_name)}</option>`).join(''); dashCat.value=old; }
+  const reportCat=document.getElementById('reportCategory'); if(reportCat){ const old=reportCat.value; reportCat.innerHTML='<option value="">ทุกประเภทวัสดุ</option>'+activeCats.map(c=>`<option value="${esc(c.category_id)}">${esc(c.category_name)}</option>`).join(''); reportCat.value=old; }
+  filterStockItems('in'); filterStockItems('out');
+  const activeDeps = APP.departments.filter(d=>String(d.status||'active').toLowerCase()==='active');
+  const depOptions = '<option value="">-- เลือกกลุ่มงาน --</option>' + activeDeps.map(d=>`<option value="${esc(d.department_name)}">${esc(d.department_name)}</option>`).join('');
+  ['userDepartment','profileGroup','regDepartment'].forEach(id=>{ const el=document.getElementById(id); if(el){ const old=el.value; el.innerHTML=depOptions; el.value=old; } });
+  const outReq=document.getElementById('outRequester'); if(outReq) outReq.value=APP.user?.fullname||'';
+  const outDep=document.getElementById('outDepartment'); if(outDep) outDep.value=APP.user?.department||'';
+}
+function getStockItemOptions(categoryId=''){ APP.items = Array.isArray(APP.items) ? APP.items : []; const items = APP.items.filter(i=>String(i.status||'active').toLowerCase()==='active' && (!categoryId || i.category_id===categoryId)); return '<option value="">-- เลือกรายการวัสดุ --</option>' + items.map(i=>`<option value="${i.item_id}">${esc(i.item_code)} - ${esc(i.item_name)} (คงเหลือ ${fmtQty(i.current_balance)} ${esc(i.unit)})</option>`).join(''); }
+function filterStockItems(type){ const catEl=document.getElementById(type==='in'?'inCategory':'outCategory'); const itemEl=document.getElementById(type==='in'?'inItem':'outItem'); if(!itemEl) return; const old=itemEl.value; itemEl.innerHTML=getStockItemOptions(catEl?.value||''); itemEl.value=[...itemEl.options].some(o=>o.value===old)?old:''; if(type==='in') setInItemInfo(); else setOutItemInfo(); }
+function bindForms(){
+  const bind=(id,fn)=>{ const el=document.getElementById(id); if(el && typeof fn==='function') el.onsubmit=fn; };
+  bind('categoryForm', saveCategorySubmit);
+  bind('itemForm', saveItemSubmit);
+  bind('stockInForm', saveStockInSubmit);
+  bind('stockOutForm', saveStockOutSubmit);
+  bind('profileForm', saveProfileSubmit);
+  bind('userForm', saveUserSubmit);
+  bind('departmentForm', saveDepartmentSubmit);
+}
+
+async function loadDashboard(){
+  const d = await server('getDashboard', TOKEN, getFilter('dash'));
+  statItems.textContent=fmt(d.totalItems); statValue.textContent=fmt(d.totalStockValue); statIn.textContent=fmt(d.stockInQty); statOut.textContent=fmt(d.stockOutQty); statOutAmount.textContent=fmt(d.stockOutAmount);
+  if(statMyPending) statMyPending.textContent=fmtQty(d.myPending); if(statMyApproved) statMyApproved.textContent=fmtQty(d.myApproved); if(statMyRejected) statMyRejected.textContent=fmtQty(d.myRejected);
+  lowStockBody.innerHTML = rows(d.lowStock, (r,idx)=>`<tr><td>${idx+1}</td><td>${esc(r.item_name)}</td><td class="text-danger fw-bold">${fmtQty(r.current_balance)}</td><td>${fmtQty(r.min_stock)}</td></tr>`);
+  topIssuedBody.innerHTML = rows(d.topIssued, (r,idx)=>`<tr><td>${idx+1}</td><td>${esc(r.item_name)}</td><td>${fmtQty(r.quantity)}</td><td>${fmt(r.amount)}</td></tr>`);
+  latestInBody.innerHTML = rows(d.latestIn, (r,idx)=>`<tr><td>${idx+1}</td><td>${esc(r.stockin_date)}</td><td>${esc(r.stockin_no)}</td><td>${esc(r.item_name)}</td><td>${fmtQty(r.quantity)}</td></tr>`);
+  latestOutBody.innerHTML = rows(d.latestOut, (r,idx)=>`<tr><td>${idx+1}</td><td>${esc(r.stockout_date)}</td><td>${esc(r.stockout_no)}</td><td>${esc(r.item_name)}</td><td>${fmtQty(r.quantity)}</td></tr>`);
+  byCategoryBody.innerHTML = rows(d.byCategory, (r,idx)=>`<tr><td>${idx+1}</td><td>${esc(r.category_name)}</td><td>${fmtQty(r.quantity)}</td><td>${fmt(r.amount)}</td></tr>`);
+  renderDashboardCharts(d);
+  checkLowStock(d.lowStock); APP.pendingCount=d.pendingCount; updateUserUI();
+}
+function renderDashboardCharts(d){
+  if(typeof Chart==='undefined') return;
+  const make=(id,type,labels,data)=>{ const el=document.getElementById(id); if(!el) return; if(DASH_CHARTS[id]) DASH_CHARTS[id].destroy(); DASH_CHARTS[id]=new Chart(el,{type, data:{labels, datasets:[{label:'ข้อมูล', data}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:type==='doughnut'}}}}); };
+  make('dashSummaryChart','bar',['รับเข้า','เบิกวัสดุ'],[Number(d.stockInQty||0),Number(d.stockOutQty||0)]);
+  make('dashMoneyChart','bar',['มูลค่าคงเหลือ','ยอดเงินเบิก'],[Number(d.totalStockValue||0),Number(d.stockOutAmount||0)]);
+  const cats=(d.byCategory||[]).slice(0,8); make('dashCategoryChart','doughnut',cats.map(x=>x.category_name),cats.map(x=>Number(x.quantity||0)));
+}
+function checkLowStock(low){ low=low||APP.items.filter(i=>Number(i.current_balance)<=Number(i.min_stock)); if(low.length){lowStockAlert.classList.remove('d-none'); lowStockAlert.innerHTML=`<i class="bi bi-exclamation-triangle"></i> พบวัสดุใกล้หมด ${low.length} รายการ`; }else lowStockAlert.classList.add('d-none'); }
+function getFilter(prefix){ const f={type:document.getElementById(prefix==='dash'?'dashType':'reportRange').value, start:document.getElementById(prefix+'Start')?.value, end:document.getElementById(prefix+'End')?.value}; if(prefix==='dash') f.category_id=document.getElementById('dashCategory')?.value||''; if(prefix==='report') f.category_id=document.getElementById('reportCategory')?.value||''; return f; }
+function toggleCustomDate(prefix){ document.querySelectorAll('.custom-'+prefix).forEach(e=>e.classList.toggle('d-none', document.getElementById(prefix==='dash'?'dashType':'reportRange').value!=='custom')); }
+
+function renderCategories(){
+  APP.categories = Array.isArray(APP.categories) ? APP.categories : [];
+  const q=(document.getElementById('catSearch')?.value||'').toLowerCase();
+  const list=APP.categories.filter(c=>(String(c.category_name||'')+String(c.description||'')).toLowerCase().includes(q));
+  const pg=pageSlice('categories', list);
+  const body=document.getElementById('categoriesBody');
+  if(body) body.innerHTML = rows(pg.slice, (c,idx)=>`<tr><td>${pg.start+idx+1}</td><td>${esc(c.category_name)}</td><td>${esc(c.description)}</td><td>${badge(c.status)}</td><td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary" onclick='openCategoryForm(${JSON.stringify(c)})'>แก้ไข</button> <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteCategory('${c.category_id}')">ลบ</button></td></tr>`);
+  renderPagination('categoriesPager','categories',list.length,renderCategories);
+}
+function openCategoryForm(c={}){
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+  set('catId', c.category_id||''); set('catName', c.category_name||''); set('catDesc', c.description||''); set('catStatus', c.status||'active');
+  new bootstrap.Modal(document.getElementById('categoryModal')).show();
+}
+async function saveCategorySubmit(e){
+  e.preventDefault();
+  const btn=e.submitter; setLoading(btn,true);
+  try{
+    const data={category_id:catId.value, category_name:catName.value, description:catDesc.value, status:catStatus.value};
+    const res=await server('saveCategory', TOKEN, data); toast(res.message);
+    if(res.success){
+      bootstrap.Modal.getInstance(document.getElementById('categoryModal'))?.hide();
+      await loadCategories();
+      renderItems();
+    }
+  }catch(err){ console.error(err); toast(err.message || 'บันทึกประเภทวัสดุไม่สำเร็จ'); }
+  finally{ setLoading(btn,false); }
+}
+async function deleteCategory(id){
+  if(!id){ toast('ไม่พบรหัสประเภทวัสดุ'); return; }
+  if(!confirm('ต้องการลบประเภทวัสดุนี้หรือไม่? หากมีรายการพัสดุใช้งานอยู่จะไม่สามารถลบได้')) return;
+  try{
+    const res=await server('deleteCategory', TOKEN, id); toast(res.message);
+    if(res.success){ await loadCategories(); renderItems(); }
+  }catch(err){ console.error(err); toast(err.message || 'ลบประเภทวัสดุไม่สำเร็จ'); }
+}
+function renderItems(){
+  APP.items = Array.isArray(APP.items) ? APP.items : [];
+  const q=(document.getElementById('itemSearch')?.value||'').toLowerCase();
+  const cat=document.getElementById('itemCategoryFilter')?.value||'';
+  const list=APP.items.filter(i=>String(i.status||'active').toLowerCase()==='active').filter(i=>(!cat||String(i.category_id)===String(cat)) && (String(i.item_code||'')+String(i.item_name||'')+String(i.category_name||'')).toLowerCase().includes(q));
+  const pg=pageSlice('items', list);
+  const head=document.getElementById('itemsHead');
+  const body=document.getElementById('itemsBody');
+  const isAdmin=APP.user?.role==='Admin';
+  if(head) head.innerHTML = isAdmin
+    ? '<tr><th>ลำดับ</th><th>รหัส</th><th>ประเภทวัสดุ</th><th>รายการ</th><th>จำนวนคงเหลือ</th><th>หน่วยนับ</th><th>ราคาต่อหน่วย</th><th>ขั้นต่ำ</th><th>สถานะ</th><th class="text-end">จัดการ</th></tr>'
+    : '<tr><th>ลำดับ</th><th>รหัส</th><th>ประเภทวัสดุ</th><th>รายการ</th><th>จำนวนคงเหลือ</th><th>หน่วยนับ</th><th>ราคาต่อหน่วย</th><th>ขั้นต่ำ</th></tr>';
+  if(body) body.innerHTML = rows(pg.slice, (i,idx)=>{
+    const low=Number(i.current_balance)<=Number(i.min_stock);
+    const base=`<td>${pg.start+idx+1}</td><td>${esc(i.item_code)}</td><td>${esc(i.category_name)}</td><td>${esc(i.item_name)}</td><td class="${low?'text-danger fw-bold':''}">${fmtQty(i.current_balance)}</td><td>${esc(i.unit)}</td><td>${fmtQty(i.unit_price)}</td><td>${fmtQty(i.min_stock)}</td>`;
+    const admin=`<td>${badge(i.status)}</td><td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary" onclick='openItemForm(${JSON.stringify(i)})'>แก้ไข</button> <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteItem('${i.item_id}')">ลบ</button></td>`;
+    return `<tr class="${low?'table-warning':''}">${base}${isAdmin?admin:''}</tr>`;
+  });
+  renderPagination('itemsPager','items',list.length,renderItems);
+}
+function openItemForm(i={}){ itemId.value=i.item_id||''; itemCode.value=i.item_code||''; itemName.value=i.item_name||''; itemCategory.value=i.category_id||''; itemUnit.value=i.unit||''; itemPrice.value=intVal(i.unit_price||0); itemCurrent.value=intVal(i.current_balance ?? i.opening_balance ?? 0); itemMin.value=intVal(i.min_stock||0); itemStatus.value=i.status||'active'; itemNote.value=i.note||''; ['itemPrice','itemCurrent','itemMin'].forEach(id=>forceInteger(document.getElementById(id))); new bootstrap.Modal(itemModal).show(); }
+async function saveItemSubmit(e){
+  e.preventDefault();
+  const btn=e.submitter; setLoading(btn,true);
+  try{
+    ['itemPrice','itemCurrent','itemMin'].forEach(id=>forceInteger(document.getElementById(id)));
+    const current=intVal(itemCurrent.value);
+    const data={item_id:itemId.value,item_code:itemCode.value,item_name:itemName.value,category_id:itemCategory.value,unit:itemUnit.value,unit_price:intVal(itemPrice.value),opening_balance:current,current_balance:current,min_stock:intVal(itemMin.value),status:itemStatus.value,note:itemNote.value};
+    const res=await server('saveItem', TOKEN, data); toast(res.message);
+    if(res.success){ bootstrap.Modal.getInstance(document.getElementById('itemModal'))?.hide(); await reloadItems(); }
+  }catch(err){ console.error(err); toast(err.message || 'บันทึกรายการวัสดุไม่สำเร็จ'); }
+  finally{ setLoading(btn,false); }
+}
+async function deleteItem(id){
+  if(!id){ toast('ไม่พบรหัสรายการวัสดุ'); return; }
+  if(!confirm('ต้องการปิดใช้งานรายการนี้?')) return;
+  try{
+    const res=await server('deleteItem', TOKEN, id); toast(res.message);
+    if(res.success){
+      APP.items = (APP.items||[]).filter(i=>String(i.item_id)!==String(id));
+      renderItems();
+      fillSelects();
+      checkLowStock();
+      refreshNotifications();
+    }
+  }catch(err){ console.error(err); toast(err.message || 'ลบรายการวัสดุไม่สำเร็จ'); }
+}
+
+function setInItemInfo(){ const i=APP.items.find(x=>x.item_id===inItem.value); if(i){ if(inCategory && !inCategory.value) inCategory.value=i.category_id||''; inPrice.value=intVal(i.unit_price||0); calcInTotal(); } else { if(typeof inPrice!=='undefined') inPrice.value=''; if(typeof inTotal!=='undefined') inTotal.value=''; } }
+function calcInTotal(){ forceInteger(inQty); forceInteger(inPrice); inTotal.value = fmt(intVal(inQty.value)*intVal(inPrice.value)); }
+async function saveStockInSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ forceInteger(inQty); forceInteger(inPrice); const data={stockin_date:inDate.value,supplier:inSupplier.value,document_no:inDoc.value,item_id:inItem.value,quantity:intVal(inQty.value),unit_price:intVal(inPrice.value),note:inNote.value}; const res=await server('createStockIn', TOKEN, data); toast(res.message); if(res.success){stockInForm.reset(); inDate.value=today(); await refreshData(); await loadDashboard();} }catch(err){toast(err.message || 'บันทึกรับเข้าไม่สำเร็จ');} finally{setLoading(btn,false);} }
+function setOutItemInfo(){ const i=APP.items.find(x=>x.item_id===outItem.value); if(i){ if(outCategory && !outCategory.value) outCategory.value=i.category_id||''; outBalance.value=fmtQty(i.current_balance); calcOutTotal(); } else { if(typeof outBalance!=='undefined') outBalance.value=''; if(typeof outTotal!=='undefined') outTotal.value=''; } }
+function calcOutTotal(){ forceInteger(outQty); const i=APP.items.find(x=>x.item_id===outItem.value); outTotal.value = fmt(intVal(outQty.value)*Number(i?.unit_price||0)); }
+async function saveStockOutSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ forceInteger(outQty); const i=APP.items.find(x=>x.item_id===outItem.value); if(intVal(outQty.value)>Number(i?.current_balance||0)){toast('จำนวนเบิกเกินคงเหลือ'); return;} const data={stockout_date:outDate.value,item_id:outItem.value,quantity:intVal(outQty.value),purpose:outPurpose.value,note:outNote.value}; const res=await server('createStockOut', TOKEN, data); toast(res.message); if(res.success){stockOutForm.reset(); outDate.value=today(); outRequester.value=APP.user.fullname; outDepartment.value=APP.user.department||''; await reloadItems(); await refreshNotifications(); await loadTracking(); showPage('tracking');} }catch(err){toast(err.message || 'ส่งคำขอเบิกพัสดุไม่สำเร็จ');} finally{setLoading(btn,false);} }
+
+function renderUsers(){
+  if(!APP.users) APP.users=[];
+  const q=(userSearch?.value||'').toLowerCase();
+  const status=userStatusFilter?.value||'';
+  const list=APP.users.filter(u=>(!status || u.status===status) && (String(u.username)+String(u.fullname)+String(u.department)+String(u.role)+String(u.phone||'')).toLowerCase().includes(q));
+  const pg=pageSlice('users', list);
+  usersBody.innerHTML=rows(pg.slice, (u,idx)=>`<tr><td>${pg.start+idx+1}</td><td>${esc(u.username)}</td><td>${esc(u.fullname)}</td><td>${esc(u.phone||'')}</td><td><span class="badge ${u.role==='Admin'?'text-bg-primary':'text-bg-info'}">${esc(u.role)}</span></td><td>${esc(u.department)}</td><td>${badge(u.status)}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick='openUserForm(${JSON.stringify(u)})'>แก้ไข</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u.user_id}')">ปิดใช้งาน</button></td></tr>`);
+  renderPagination('usersPager','users',list.length,renderUsers);
+}
+async function refreshUsers(){ APP.users=await server('listUsers', TOKEN); renderUsers(); }
+function openUserForm(u={}){ userId.value=u.user_id||''; userUsername.value=u.username||''; userPassword.value=''; userFull.value=u.fullname||''; if(typeof userPhone!=='undefined') userPhone.value=u.phone||''; userRoleSelect.value=u.role||'User'; userStatus.value=u.status||'active'; userDepartment.value=u.department||''; if(typeof userApprovalNote!=='undefined') userApprovalNote.value=u.approval_note||''; userPassword.required=!u.user_id; new bootstrap.Modal(userModal).show(); }
+async function saveUserSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ const data={user_id:userId.value,username:userUsername.value,password:userPassword.value,fullname:userFull.value,phone:userPhone?.value||'',role:userRoleSelect.value,department:userDepartment.value,status:userStatus.value,approval_note:userApprovalNote?.value||''}; const res=await server('saveUser', TOKEN, data); toast(res.message); if(res.success){bootstrap.Modal.getInstance(userModal).hide(); await refreshData();} }catch(err){toast(err.message)} finally{setLoading(btn,false);} }
+async function deleteUser(id){ if(!confirm('ต้องการปิดใช้งานผู้ใช้นี้?')) return; const res=await server('deleteUser', TOKEN, id); toast(res.message); await refreshData(); }
+
+function renderDepartments(){ if(!APP.departments) APP.departments=[]; const q=(document.getElementById('depSearch')?.value||'').toLowerCase(); const list=APP.departments.filter(d=>(String(d.department_name||'')+String(d.status||'')).toLowerCase().includes(q)); if(typeof departmentsBody!=='undefined') departmentsBody.innerHTML=rows(list, (d,idx)=>`<tr><td>${idx+1}</td><td>${esc(d.department_name)}</td><td>${badge(d.status)}</td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick='openDepartmentForm(${JSON.stringify(d)})'>แก้ไข</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteDepartment('${d.department_id}')">ปิดใช้งาน</button></td></tr>`); }
+function openDepartmentForm(d={}){ depId.value=d.department_id||''; depName.value=d.department_name||''; depStatus.value=d.status||'active'; new bootstrap.Modal(departmentModal).show(); }
+async function saveDepartmentSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ const data={department_id:depId.value, department_name:depName.value, status:depStatus.value}; const res=await server('saveDepartment', TOKEN, data); toast(res.message); if(res.success){ bootstrap.Modal.getInstance(departmentModal).hide(); await refreshData(); } }catch(err){ toast(err.message || 'บันทึกกลุ่มงานไม่สำเร็จ'); } finally{ setLoading(btn,false); } }
+async function deleteDepartment(id){ if(!confirm('ต้องการปิดใช้งานกลุ่มงานนี้?')) return; const res=await server('deleteDepartment', TOKEN, id); toast(res.message); await refreshData(); }
+
+function openProfileModal(){ profileFullname.value=APP.user?.fullname||''; profileGroup.value=APP.user?.department||''; const ph=document.getElementById('profilePhone'); if(ph) ph.value=APP.user?.phone||''; new bootstrap.Modal(document.getElementById('profileModal')).show(); }
+function openProfileForm(){ openProfileModal(); }
+async function saveProfileSubmit(e){ e.preventDefault(); const btn=e.submitter; setLoading(btn,true); try{ const res=await server('updateMyProfile', TOKEN, {fullname:profileFullname.value, department:profileGroup.value, phone:document.getElementById('profilePhone')?.value||''}); toast(res.message); if(res.success){ APP.user=res.user; bootstrap.Modal.getInstance(profileModal).hide(); updateUserUI(); fillSelects(); } }catch(err){toast(err.message || 'บันทึกโปรไฟล์ไม่สำเร็จ')} finally{setLoading(btn,false);} }
+
+async function loadTracking(){ const list=await server('listMyRequests', TOKEN); APP.requests=list; markTrackingSeen(); const pg=pageSlice('tracking', list); trackingBody.innerHTML=rows(pg.slice, (r,idx)=>`<tr><td>${pg.start+idx+1}</td><td>${esc(r.request_date)}</td><td>${esc(r.request_no)}</td><td>${esc(r.item_name)}</td><td>${fmtQty(r.quantity)} ${esc(r.unit||'')}</td><td>${badge(r.status)}</td><td>${esc(r.approved_by||'-')}</td><td>${esc(r.approval_note||'-')}</td></tr>`); renderPagination('trackingPager','tracking',list.length,loadTracking); }
+async function loadApprovals(){ if(APP.user?.role!=='Admin') return; const list=await server('listPendingRequests', TOKEN); const pg=pageSlice('approvals', list); approvalsBody.innerHTML=rows(pg.slice, (r,idx)=>{ const item=APP.items.find(i=>i.item_id===r.item_id)||{}; return `<tr><td>${pg.start+idx+1}</td><td>${esc(r.request_date)}</td><td>${esc(r.request_no)}</td><td>${esc(r.requester_name)}</td><td>${esc(r.department)}</td><td>${esc(r.item_name)}</td><td>${fmtQty(r.quantity)}</td><td>${fmtQty(item.current_balance)}</td><td class="text-end"><button class="btn btn-sm btn-success" onclick="approveReq('${r.request_id}')">อนุมัติ</button> <button class="btn btn-sm btn-outline-danger" onclick="rejectReq('${r.request_id}')">ไม่อนุมัติ</button></td></tr>`}); renderPagination('approvalsPager','approvals',list.length,loadApprovals); }
+async function approveReq(id){ const note=prompt('หมายเหตุการอนุมัติ (ถ้ามี)','') || ''; const res=await server('approveRequest', TOKEN, id, note); toast(res.message); await reloadItems(); await refreshNotifications(); await loadApprovals(); }
+async function rejectReq(id){ const note=prompt('กรุณาระบุเหตุผลไม่อนุมัติ','') || ''; if(!note) return; const res=await server('rejectRequest', TOKEN, id, note); toast(res.message); await reloadItems(); await refreshNotifications(); await loadApprovals(); }
+
+const REPORT_LABELS = {seq:'ลำดับ',item_code:'รหัสวัสดุ', item_name:'ชื่อวัสดุ', category_name:'ประเภทวัสดุ', unit:'หน่วยนับ', current_balance:'วัสดุคงเหลือ', unit_price:'ราคาต่อหน่วย', total_amount:'มูลค่ารวม', min_stock:'ขั้นต่ำ', stockin_id:'รหัสรับเข้า', stockin_no:'เลขที่รับเข้า', stockin_date:'วันที่รับเข้า', supplier:'ผู้ขาย/ผู้จำหน่าย', document_no:'เลขที่เอกสาร', item_id:'รหัสรายการวัสดุ', quantity:'จำนวน', balance_before:'คงเหลือก่อน', balance_after:'คงเหลือหลัง', created_by:'ผู้บันทึก', note:'หมายเหตุ', stockout_id:'รหัสเบิกพัสดุ', stockout_no:'เลขที่เบิกพัสดุ', stockout_date:'วันที่เบิก', requester_name:'ผู้เบิก', department:'กลุ่มงาน', purpose:'วัตถุประสงค์', approved_by:'ผู้อนุมัติ', request_id:'รหัสคำขอ', request_no:'เลขที่คำขอ', request_date:'วันที่ขอ', status:'สถานะ', approved_date:'วันที่อนุมัติ', approval_note:'หมายเหตุอนุมัติ', stockout_no:'เลขที่เบิกพัสดุ'};
+function reportLabel(k){ return REPORT_LABELS[k] || k; }
+async function loadReport(){ applyReportPermission(); if(APP.user?.role!=='Admin') reportType.value='balance'; const type=reportType.value; const res=await server('getReport', TOKEN, type, getFilter('report')); APP.reportRows=res.rows||[]; resetPage('reports'); reportTitle.textContent = reportType.options[reportType.selectedIndex].text + ` (${res.range.start} ถึง ${res.range.end})`; renderReportTable(APP.reportRows); }
+function renderReportTable(rows){
+  if(!rows.length){reportTableWrap.innerHTML='<div class="text-center text-muted p-4">ไม่พบข้อมูล</div>'; if(reportPager) reportPager.innerHTML=''; return;}
+  const normalized=rows.map((r,idx)=>('seq' in r)?r:{seq:idx+1,...r});
+  const pg=pageSlice('reports', normalized);
+  const keys=['seq', ...Object.keys(normalized[0]).filter(k=>k!=='seq')];
+  reportTableWrap.innerHTML = `<table class="table table-bordered table-sm"><thead><tr>${keys.map(k=>`<th>${esc(reportLabel(k))}</th>`).join('')}</tr></thead><tbody>${pg.slice.map((r,idx)=>`<tr>${keys.map(k=>`<td>${k==='seq' ? (pg.start+idx+1) : (typeof r[k]==='number'?fmt(r[k]):esc(r[k]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  renderPagination('reportPager','reports',normalized.length,()=>renderReportTable(APP.reportRows));
+}
+function exportCSV(){ if(!APP.reportRows.length){toast('ไม่มีข้อมูลสำหรับส่งออก'); return;} const normalized=APP.reportRows.map((r,idx)=>('seq' in r)?r:{seq:idx+1,...r}); const keys=Object.keys(normalized[0]); const csv=[keys.map(reportLabel).join(',')].concat(normalized.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))).join('\n'); const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='report.csv'; a.click(); URL.revokeObjectURL(a.href); }
+</script>

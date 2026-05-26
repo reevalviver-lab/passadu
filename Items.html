@@ -1,0 +1,14 @@
+<div class="page-head"><h4>รายการวัสดุคงเหลือ</h4><button class="btn btn-primary admin-only" onclick="openItemForm()"><i class="bi bi-plus"></i> เพิ่มวัสดุ</button></div>
+<div class="card"><div class="card-body"><div class="row g-2 mb-3"><div class="col-md-8"><input id="itemSearch" class="form-control" placeholder="ค้นหารหัส/ชื่อวัสดุ" oninput="renderItems()"></div><div class="col-md-4"><select id="itemCategoryFilter" class="form-select" onchange="renderItems()"></select></div></div>
+<div class="table-responsive"><table class="table table-hover align-middle" id="itemsTable"><thead id="itemsHead"></thead><tbody id="itemsBody"></tbody></table></div><div id="itemsPager" class="pager-wrap"></div>
+<div class="small text-muted mt-2">หมายเหตุ: ขั้นต่ำ หมายถึง จะแจ้งเตือนวัสดุใกล้หมดเมื่อวัสดุเหลือตามจำนวนที่กำหนด</div>
+</div></div>
+<div class="modal fade" id="itemModal"><div class="modal-dialog modal-lg"><form class="modal-content" id="itemForm">
+<div class="modal-header"><h5 class="modal-title">รายการวัสดุ</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><input type="hidden" id="itemId"><div class="row g-3">
+<div class="col-md-4"><label>รหัสวัสดุ</label><input id="itemCode" class="form-control" placeholder="เว้นว่างเพื่อสร้างอัตโนมัติ"></div><div class="col-md-8"><label>ชื่อวัสดุ</label><input id="itemName" class="form-control" required></div>
+<div class="col-md-6"><label>ประเภทวัสดุ</label><select id="itemCategory" class="form-select"></select></div><div class="col-md-3"><label>หน่วยนับ</label><input id="itemUnit" class="form-control" required></div><div class="col-md-3"><label>ราคาต่อหน่วย</label><input id="itemPrice" type="number" step="1" min="0" inputmode="numeric" pattern="[0-9]*" class="form-control"></div>
+<div class="col-md-6"><label>วัสดุคงเหลือ</label><input id="itemCurrent" type="number" step="1" min="0" inputmode="numeric" pattern="[0-9]*" class="form-control" required></div><div class="col-md-6"><label>ขั้นต่ำ</label><input id="itemMin" type="number" step="1" min="0" inputmode="numeric" pattern="[0-9]*" class="form-control"></div>
+<div class="col-md-4"><label>สถานะ</label><select id="itemStatus" class="form-select"><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></div><div class="col-md-8"><label>หมายเหตุ</label><input id="itemNote" class="form-control"></div>
+</div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button class="btn btn-primary" data-loading-text="กำลังบันทึก...">บันทึก</button></div>
+</form></div></div>

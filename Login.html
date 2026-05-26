@@ -1,0 +1,30 @@
+<div class="login-page position-relative">
+  <div class="dev-credit">Dev.Wan-asr</div>
+  <div class="card login-card shadow-lg">
+    <div class="card-body p-4">
+      <div class="text-center mb-4">
+        <div class="login-icon"><i class="bi bi-box-seam"></i></div>
+        <h4 class="mt-3">ระบบบริหารงานพัสดุ</h4>
+        <p class="text-muted mb-0">เข้าสู่ระบบเพื่อใช้งาน</p>
+      </div>
+      <form id="loginForm">
+        <div class="mb-3"><label class="form-label">Username</label><input id="loginUsername" class="form-control" required autocomplete="username"></div>
+        <div class="mb-3"><label class="form-label">Password</label><input id="loginPassword" type="password" class="form-control" required autocomplete="current-password"></div>
+        <button class="btn btn-primary w-100" type="submit" data-loading-text="กำลังเข้าสู่ระบบ..."><i class="bi bi-lock"></i> Login</button>
+      </form>
+      <button class="btn btn-link w-100 mt-2" onclick="openRegisterModal()">ลงทะเบียนผู้ใช้ใหม่</button>
+      <div class="small text-muted mt-2">เริ่มต้น: admin/admin123 หรือ user/user123</div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="registerModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" id="registerForm">
+  <div class="modal-header"><h5 class="modal-title">ลงทะเบียนผู้ใช้ใหม่</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body row g-3">
+    <div class="col-md-6"><label>Username</label><input id="regUsername" class="form-control" required></div>
+    <div class="col-md-6"><label>Password</label><input id="regPassword" type="password" class="form-control" required></div>
+    <div class="col-12"><label>ชื่อ-นามสกุล</label><input id="regFullname" class="form-control" required></div>
+    <div class="col-md-6"><label>เบอร์โทร</label><input id="regPhone" class="form-control" required></div>
+    <div class="col-md-6"><label>กลุ่มงาน</label><select id="regDepartment" class="form-select" required></select></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button><button class="btn btn-primary" data-loading-text="กำลังส่งคำขอ...">ส่งคำขอลงทะเบียน</button></div>
+</form></div></div>
