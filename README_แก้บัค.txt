@@ -9,3 +9,4 @@
 1) แทนที่ไฟล์ทั้งหมดใน Google Apps Script ด้วยไฟล์ใน ZIP นี้
 2) บันทึก แล้ว Deploy > New deployment หรือ Manage deployments > Edit > New version
 3) รีเฟรช Web App ใหม่
+หกดกหดกหด
