@@ -1,6 +1,6 @@
 // ใส่ URL Web App ของ Google Apps Script ตรงนี้
 // ต้องเป็นลิงก์ที่ลงท้ายด้วย /exec
-const GAS_URL = "PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxKRr0x6oF2vuzinXAeuEqQXck1PMUYFQWVbrm-Q8nQlj_sGSOnLEwdrvZ2UIb4j3ju/exec";
 
 const setupBox = document.getElementById("setupBox");
 const appBox = document.getElementById("appBox");
